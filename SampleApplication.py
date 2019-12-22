@@ -9,8 +9,9 @@ Class that implements the main functionality of the integration robot Howdy.
 
 
 class SampleApplication(Base.AbstractApplication):
-    def __init__(self):
+    def _init_(self):
         # Initiate variables that will be used globally.
+        self.answerAfterPracticeLock = Semaphore(0)
         self.gestureLock = Semaphore(0)
         self.levelLock = Semaphore(0)
         self.langLock = Semaphore(0)
@@ -20,6 +21,7 @@ class SampleApplication(Base.AbstractApplication):
         self.learnTime = Semaphore(0)
         self.answerLock = Semaphore(0)
         self.answer = ""
+        self.answerAfterPractice = ""
         self.name = ""
         self.practiceTest = ""
         self.level = ""
@@ -34,7 +36,7 @@ class SampleApplication(Base.AbstractApplication):
         self.loadDicts()
 
         # Initialise Abstract Application
-        Base.AbstractApplication.__init__(self)
+        Base.AbstractApplication._init_(self)
 
     def main(self):
         # Record the audio that the user inputs for later analysis and debugging.
@@ -59,26 +61,27 @@ class SampleApplication(Base.AbstractApplication):
     def introduction(self):
         # Listen for name of the user.
         self.setAudioContext("answer_name")
+        self.setEyeColour("blue")
         self.startListening()
         self.nameLock.acquire(timeout=4)
         self.stopListening()
+        self.setEyeColour("white")
         if self.name == "":
             self.nameLock.acquire(timeout=1)
-
 
         # If no name was recorded keep asking for name until it is acquired:
         while self.name == "":
             self.say("Sorry I didn't catch your name, could you repeat it?")
             self.speechLock.acquire()
             self.setAudioContext("answer_name")
+            self.setEyeColour("blue")
             self.startListening()
             self.nameLock.acquire(timeout=4)
             self.stopListening()
             self.nameLock.acquire(timeout=1)
-
+            self.setEyeColour("white")
 
         # If a name was recorded, pick one of the answers and start next function
-        print(self.name)
         self.pickFromList(self.nameList, self.name)
         self.practiceOrTest()
 
@@ -86,12 +89,13 @@ class SampleApplication(Base.AbstractApplication):
         # Listen for whether to test or to practice
         self.setAudioContext("answer_practice_test")
         self.setAudioHints("Practice", "test")
+        self.setEyeColour("blue")
         self.startListening()
-
         self.practiceTestLock.acquire(timeout=4)
         self.stopListening()
+        self.setEyeColour("white")
         if self.practiceTest == "":
-            print('1')
+            print("No practice found")
             self.practiceTestLock.acquire(timeout=1)
 
         # If no name was recorded keep asking for name until it is acquired:
@@ -99,9 +103,11 @@ class SampleApplication(Base.AbstractApplication):
             self.say("Sorry I didn't catch that")
             self.speechLock.acquire()
             self.setAudioContext("answer_practice_test")
+            self.setEyeColour("blue")
             self.startListening()
             self.practiceTestLock.acquire(timeout=4)
             self.stopListening()
+            self.setEyeColour("white")
 
         # If the user chose to practice, give appropriate response
         if self.practiceTest == "Practice":
@@ -128,25 +134,29 @@ class SampleApplication(Base.AbstractApplication):
     def listenToLevel(self):
         # Listen for what level the user wants to test or practice
         self.setAudioContext("answer_level")
+        self.setEyeColour("blue")
         self.startListening()
         self.levelLock.acquire(timeout=3)
         self.stopListening()
+        self.setEyeColour("white")
 
         # Keep prompting user for answer while no answer has been recognised
         while self.level == "":
             self.say("Sorry I didn't catch that")
             self.setAudioContext("answer_level")
             self.speechLock.acquire()
+            self.setEyeColour("blue")
             self.startListening()
             self.levelLock.acquire(timeout=4)
             self.stopListening()
+            self.setEyeColour("white")
 
     def practice(self):
         # Load the word dictionary that corresponds to the level that was chosen
-        wordDict = self.wordDicts[int(self.level)]
+        wordDict = self.wordDicts[self.level]
 
         # Tell the user how the practice session will work
-        self.sayAnimated("Lets practice!, I will first say a word in english and then repeat it in Dutch, "
+        self.sayAnimated("Lets practice!, I will first say a word in english and then repeat it in Syrian, "
                          "then I'll give you a couple seconds to repeat the word")
         self.speechLock.acquire()
 
@@ -158,36 +168,29 @@ class SampleApplication(Base.AbstractApplication):
             print(numberWord)
 
         # When the session is over, give a compliment and ask if the user want to test their new skills
-        self.sayAnimated("Nice practice session brosky, you're the best in the wild west!")
-        self.sayAnimated("Do you want to Test your new skills?")
-
-        # Save the user and the practice session in the database
-        self.savePracticeLevel(self.level)
+        self.sayAnimated("Nice practice session {}, you're the best in the wild west!".format(self.name))
+        self.sayAnimated("What do you want to do? Do you want to Quit, Practice again or Test your new skills?")
+        self.aftermath()
 
     def practiceWord(self, key, value, numberWord):
         # Reset the language to English and say the key word
-        self.setLanguage("en-US")
-        self.langLock.acquire()
-        self.say(key)
-        self.learnTime.acquire(timeout=1)
-        self.say("means")
+        for i in range(2):
+            self.say(key)
+            self.speechLock.acquire(timeout=1)
+            self.sayAnimated("means")
+            self.speechLock.acquire(timeout=2)
+            self.say(value)
+            self.speechLock.acquire(timeout=2)
 
-        # Set the language to Dutch and say the practice word
-        # self.setLanguage("nl-NL")
-        # self.langLock.acquire()
-        self.say(value)
-        self.learnTime.acquire(timeout=1)
-
-        # On the first couple words tell the user to repeat the word, then just wait for the user to repeat
+        # On the first three couple words tell the user to repeat the word, then just wait for the user to repeat
         if numberWord < 3:
             self.sayAnimated("repeat please")
         self.learnTime.acquire(timeout=5)
 
-        # May implement a method that recognises the input from user and checks if the pronunciation is correct.
-
     def test(self):
         """
-        Here the robots starts to test the user by looping through all the words to test.
+        Here the robots starts to test the user by looping through all the words to test. But first, Howdy retrieves the
+        levels that the user has practised and gives to oppurtunity to choose the level to test.
             """
 
         levels = self.retrievePracticeLevel()
@@ -222,6 +225,9 @@ class SampleApplication(Base.AbstractApplication):
             for key, value in wrongWords[:]:
                 self.testWord(key, value, counter, wrongWords)
 
+        self.sayAnimated("What do you want to do? Do you want to Quit, Practice again or Test your new skills?")
+        self.aftermath()
+
     def testWord(self, key, value, counter, wrongWords):
         """Tests a single word by giving the word the user is supposed to translate, and to listen to the input of
         user, checking if the given word corresponds to the answer """
@@ -237,9 +243,11 @@ class SampleApplication(Base.AbstractApplication):
         # self.setLanguage("nl-NL")
         # self.langLock.acquire()
         self.setAudioContext("answer_answerLevelOne")
+        self.setEyeColour("blue")
         self.startListening()
         self.answerLock.acquire(timeout=4)
         self.stopListening()
+        self.setEyeColour("white")
 
         if self.answer:
             if value == self.answer:
@@ -247,46 +255,74 @@ class SampleApplication(Base.AbstractApplication):
                 self.sayAnimated(self.pickFromList(self.complimentList, ""))
                 if value in [v for k, v in wrongWords]:
                     wrongWords.remove((key, value))
-
             else:
                 # If the given value by the user is wrong, say it is wrong and append it to the wrongWords list.
                 self.sayAnimated(self.pickFromList((self.wrongAnswerList, "")))
                 wrongWords.append((key, value))
-        else:
-            self.sayAnimated("speak up you shy bitch")
+
+    def aftermath(self):
+        self.setAudioContext("answer_after_practice")
+        self.setAudioHints("Practice", "Test", "Quit")
+        self.setEyeColour("blue")
+        self.startListening()
+        self.answerAfterPracticeLock.acquire(timeout=3)
+        self.stopListening()
+        self.setEyeColour("white")
+        if self.answerAfterPractice == "":
+            self.answerAfterPracticeLock.acquire(timeout=1)
+
+
+        while self.answerAfterPractice == "":
+            self.say("Sorry I didn't catch that, what do you want to do now?")
+            self.speechLock.acquire()
+            self.setAudioContext("answer_after_practice")
+            self.setEyeColour("blue")
+            self.startListening()
+            self.answerAfterPractice.acquire(timeout=4)
+            self.stopListening()
+            self.setEyeColour("white")
+
+        if self.answerAfterPractice == "Practice" or self.answerAfterPractice == "practice":
+            self.practice()
+
+        elif self.answerAfterPractice == "Test" or self.answerAfterPractice == "test":
+            self.test()
+
+        elif self.answerAfterPractice == "Quit" or self.answerAfterPractice == "quit":
+            self.sayAnimated("Good bye!")
+            quit()
+
 
     def loadDicts(self):
         """
         Loads dictionaries of translated word pairs into another dictionary that can be used globally
             """
-        self.wordDicts= {
-            1: {"hello": "hallo", "goodbye": "doei", "job":"baan", "wages": "loon", "salary": "salaris",
-                "work": "werk", "goal": "doel", "colleague": "collega", "skills": "vaardigheden",
-                 "manager": "manager", "manage": "beheren", "company": "bedrijf", "task": "taak",
-                "interview": "sollicitatie"},
 
-            2: {"business’":"zaken", "wholesale": "groothandel", "sales": "verkoop", "achieve": "bereiken",
-                "venture": "onderneming", "brand": "merk", "delegation": "delegatie", "meet": "afspreken",
-                "talk": "praten", "busy": "bezig", "delivery": "bezorging", "order": "bestellen", "know": "weten",
-                "join": "meedoen"},
-
-            3: {"entrepreneur": "ondernemer", "dedication": "toewijding", "citizenship": "burgerschap",
-                "citizen": "burger", "expecting": "verwachten", "learning": " leren", "wishing": " wensen",
-                "effort": "inspanning", "offer": " aanbod ", "discuss":  "bespreken", "allow": "toestaan",
-                "areas": "gebieden", "resume": "hervatten", "employment": "werkgelegenheid"},
-
-            4: {"catering industry": "horeca", "working hours": "werkuren", "civil servant": "ambtenaar",
-                "police officer": "politie agent", "fireman": "brandweerman", "retail": "kleinhandel",
-                "hospital":"ziekenhuis", "full - time": "voltijd", "part - time": "deeltijd", "tax": "belasting"},
-
-            5: {"drivers license": "rijbewijs", "apply for ": "solliciteren voor",
-                "responsibilities": "verantwoordelijkheden", "vacancy":"vacature", "vocational level": "beroepsniveau",
-                "cover letter": "voorblad", "life insurance": "levensverzekering", "tax advisor": "belastingadviseur",
-                " investing": "beleggen"}
+        self.wordDicts = {
+            1: {"goodbye": "wadaeaan", "colleague": "zamil", "company": "sharika"}
+            ,
+            2: {"business": "aemal", "wholesale": "bialjumla", "sales": "mabieat", "achieve": "altawasul",
+                "venture": "almaghamir", "brand": "ealamat tijaria", "delegation": "wafda", "meet": "yajtamie",
+                "talk": "hadith", "busy": "mashghul", "delivery": "tawsil", "order": "talab", "know": "aerf",
+                "join": "aindama"}
+            ,
+            3: {"entrepreneur": "ryady", "dedication": "tafan", "citizenship": "almuatina", "citizen": "muatin",
+                "expect": "tuaqie", "learn": "taealam", "wish": "raghba", "effort": "majhud", "offer": "eard",
+                "discuss": "munaqasha", "allow": "alsamah", "areas": "almanatiq", "resume": "sirat dhatia",
+                "employment": "tawzif"}
+            ,
+            4: {"catering industry": "sinaeat altaeam", "working hours": "saeat aleamal",
+                "civil servant": "iinaa aistifan", "police officer": "dabit shurta", "fireman": "rajul al'iitfa",
+                "retail": "altajzia", "hospital": "mustashfaa", "full - time": "waqt kamil", "part - time":
+                    "dawam jazyaa", "tax": "hamal"}
+            ,
+            5: {"drivers license": "rukhsat alssayiq", "apply for": "altaqadum bitalab lilhusul",
+                "responsibilities": "almaswuwliat", "vacancy": "shaghir", "vocational level": "almustawaa almahniu",
+                "cover letter": "ghita' alrisala", "life insurance": "altaamin ealaa alhaya",
+                "tax advisor": "mustashar aldarayib", "investing": "alaistithmar"}
         }
 
     def pickFromList(self, list, var):
-        print(self.nameList)
         randint = random.randint(0, len(list) - 1)
         self.speechLock = Semaphore(0)
         print(list[randint])
@@ -298,9 +334,11 @@ class SampleApplication(Base.AbstractApplication):
         self.gestureLock.release()
 
     def listen(self):
+        self.setEyeColour("blue")
         self.startListening()
         self.practice_testLock.acquire(timeout=4)
         self.stopListening()
+        self.setEyeColour("white")
 
     def loadLists(self):
         self.nameList = ["{} My friend, do you want to practice with me or should I take a test",
@@ -364,6 +402,11 @@ class SampleApplication(Base.AbstractApplication):
         if intentName == "answer_answerLevelOne" and len(args) > 0:
             print(args[0])
             self.answer = args[0]
+            self.answerLock.release()
+
+        if intentName == "answer_after_practice" and len(args) > 0:
+            print(args[0])
+            self.answerAfterPractice = args[0]
             self.answerLock.release()
 
 
